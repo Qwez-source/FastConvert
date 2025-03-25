@@ -1,0 +1,4 @@
+click
+Pillow
+python-magic-bin
+opencv-python
