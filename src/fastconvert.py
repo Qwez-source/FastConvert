@@ -10,8 +10,10 @@ class Converter:
         """Convert image files between different formats"""
         try:
             with Image.open(input_path) as img:
-                if output_path.lower().endswith(('.jpg', '.jpeg')) and img.mode == 'RGBA':
-                    img = img.convert('RGB')
+                # Convert P (palette) mode to RGB for JPEG output
+                if output_path.lower().endswith(('.jpg', '.jpeg')):
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        img = img.convert('RGB')
                 img.save(output_path)
             return True
         except Exception as e:
@@ -21,6 +23,8 @@ class Converter:
     @staticmethod
     def convert_video(input_path, output_path):
         """Convert video files between different formats or extract frame"""
+        cap = None
+        out = None
         try:
             print(f"Opening video file: {input_path}")
             cap = cv2.VideoCapture(input_path)
@@ -50,18 +54,30 @@ class Converter:
                 # Create VideoWriter with appropriate codec
                 ext = os.path.splitext(output_path)[1].lower()
                 if ext == '.mp4':
-                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    # Try different MP4 codecs in order of preference
+                    codecs = ['avc1', 'h264', 'mp4v']
+                    for codec in codecs:
+                        fourcc = cv2.VideoWriter_fourcc(*codec)
+                        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+                        if out.isOpened():
+                            break
+                    if not out.isOpened():
+                        raise Exception("Could not find suitable codec for MP4")
                 elif ext == '.avi':
                     fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                 elif ext == '.amv':
                     fourcc = cv2.VideoWriter_fourcc(*'MJPG')
                     fps = 25.0 if fps == 0 else fps
                     width = 160 if width == 0 else width
                     height = 120 if height == 0 else height
+                    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                 else:
                     fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
                 
-                out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+                if not out.isOpened():
+                    raise Exception("Failed to create output video file")
                 
                 while True:
                     ret, frame = cap.read()
@@ -71,15 +87,17 @@ class Converter:
                     if ext == '.amv' and (frame.shape[1] != width or frame.shape[0] != height):
                         frame = cv2.resize(frame, (width, height))
                     out.write(frame)
-                
-                out.release()
             
-            cap.release()
             return True
             
         except Exception as e:
             print(f"Error converting video: {e}")
             return False
+        finally:
+            if cap is not None:
+                cap.release()
+            if out is not None:
+                out.release()
 
 # Supported formats
 image_formats = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tiff', '.tif', 
